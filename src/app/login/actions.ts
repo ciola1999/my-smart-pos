@@ -48,5 +48,5 @@ export async function loginAction(
 
   // 3. Redirect jika sukses
   // (Redirect akan melempar error NEXT_REDIRECT, jadi biarkan di luar try-catch atau biarkan throw)
-  redirect("/dashboard");
+  redirect("/");
 }

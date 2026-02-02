@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react'; // ✅ Terpakai
 import { getDashboardData } from '@/services/dashboard.service';
-import AnimatedCounter from '@/components/smart-pos/dashboard/AnimatedCounter';
+import AnimatedCounter from '@/components/smart-pos/AnimatedCounter';
 import { RevenueChart } from '@/components/smart-pos/dashboard/RevenueChart';
 import { RecentSales } from '@/components/smart-pos/dashboard/RecentSales';
 import { TopProducts } from '@/components/smart-pos/dashboard/TopProducts';

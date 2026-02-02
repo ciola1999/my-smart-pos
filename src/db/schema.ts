@@ -249,4 +249,16 @@ export const orderPaymentsRelations = relations(orderPayments, ({ one }) => ({
   }),
 }));
 
+// --- TYPES ---
+export type Order = typeof orders.$inferSelect;
+export type OrderItem = typeof orderItems.$inferSelect;
+export type OrderPayment = typeof orderPayments.$inferSelect;
+export type User = typeof users.$inferSelect;
+export type StoreSetting = typeof storeSettings.$inferSelect;
 export type Member = typeof members.$inferSelect; // Type Baru
+export type Discount = typeof discounts.$inferSelect; // Type Baru
+export type Tax = typeof taxes.$inferSelect; // Type Baru
+export type Category = typeof categories.$inferSelect;
+export type NewCategory = typeof categories.$inferInsert;
+export type Product = typeof products.$inferSelect;
+export type NewProduct = typeof products.$inferInsert;
