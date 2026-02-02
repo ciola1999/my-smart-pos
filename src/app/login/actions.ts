@@ -31,7 +31,7 @@ export async function loginAction(
   // 2. Strategi Login: Username -> Fake Email
   // Supabase butuh email, tapi kasir taunya username.
   // Kita format jadi: username@pos.local
-  const email = `${username}@pos.local`;
+  const email = `${username}@example.com`;
 
   const { error } = await supabase.auth.signInWithPassword({
     email,

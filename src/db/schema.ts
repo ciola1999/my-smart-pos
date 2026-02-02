@@ -248,3 +248,5 @@ export const orderPaymentsRelations = relations(orderPayments, ({ one }) => ({
     references: [orders.id],
   }),
 }));
+
+export type Member = typeof members.$inferSelect; // Type Baru
