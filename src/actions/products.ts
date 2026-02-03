@@ -1,3 +1,5 @@
+// Project\smart-pos-v2\src\actions\products.ts
+
 'use server';
 
 import { db } from '@/db';
@@ -160,7 +162,7 @@ export async function upsertProduct(
   const data = validatedFields.data;
 
   // 3. Handle Image Upload (STRICT CHECK)
-  const imageEntry = formData.get('image'); // Tipe: FormDataEntryValue | null
+  const imageEntry = formData.get('image') as File; // Tipe: FormDataEntryValue | null
   let finalImageUrl = (data.imageUrl as string) || null;
 
   // Type Guard: Pastikan ini benar-benar FILE dan ukurannya > 0
