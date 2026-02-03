@@ -1,32 +1,42 @@
 import * as React from 'react';
-import { formatRupiah } from '@/lib/utils';
 
-// Pastikan Interface ini SAMA PERSIS dengan props yang dikirim di POSInterface
+// ✅ 1. Helper Format Rupiah (Lokal di file ini biar aman)
+const formatRupiah = (amount: number) => {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
+
+// ✅ 2. Interface (Sesuai dengan pos-interface.tsx)
 interface ReceiptProps {
   storeName: string;
   storeAddress: string;
   storePhone?: string;
   receiptFooter?: string;
 
-  // Data Keuangan (Terima angka matang, jangan hitung ulang)
+  // Data Keuangan (Terima angka matang/Number)
   subtotal: number;
   taxAmount: number;
   discountAmount?: number;
   totalAmount: number;
 
   // Pembayaran
-  amountPaid: number; // Uang yang dibayarkan
-  changeAmount: number; // Kembalian
+  amountPaid: number; 
+  changeAmount: number; 
   paymentMethod: string;
-  payments?: { method: string; amount: number }[]; // Untuk Split Bill
+  // 🔥 Ubah 'method' jadi 'paymentMethod' biar konsisten sama DB
+  payments?: { paymentMethod: string; amount: number }[]; 
 
   // Metadata Transaksi
   date: Date | string;
   orderId: string | number;
   cashierName: string;
   customerName: string;
-  tableNumber?: string; // Opsional
-  orderType: string; // Dine In / Take Away
+  tableNumber?: string; 
+  orderType: string; 
 
   // Items
   items: {
@@ -39,14 +49,15 @@ interface ReceiptProps {
 
 export const ReceiptTemplate = React.forwardRef<HTMLDivElement, ReceiptProps>(
   (props, ref) => {
-    // KITA TIDAK PERLU MENGHITUNG ULANG PAJAK DISINI
-    // Gunakan props.subtotal dan props.taxAmount langsung
+    
+    // Safety check untuk tanggal
+    const dateObj = new Date(props.date);
 
     return (
       <div
         ref={ref}
         className="w-[80mm] mx-auto bg-white text-black font-mono text-[11px] leading-tight p-2 pb-4"
-        style={{ color: 'black' }}
+        style={{ color: 'black' }} // Paksa warna hitam untuk printer thermal
       >
         {/* --- HEADER --- */}
         <div className="flex flex-col items-center justify-center text-center mb-2">
@@ -61,9 +72,9 @@ export const ReceiptTemplate = React.forwardRef<HTMLDivElement, ReceiptProps>(
         {/* --- INFO TRANSAKSI --- */}
         <div className="flex flex-col gap-1 mb-3 text-[10px]">
           <div className="flex justify-between">
-            <span>{new Date(props.date).toLocaleDateString('id-ID')}</span>
+            <span>{dateObj.toLocaleDateString('id-ID')}</span>
             <span>
-              {new Date(props.date).toLocaleTimeString('id-ID', {
+              {dateObj.toLocaleTimeString('id-ID', {
                 hour: '2-digit',
                 minute: '2-digit',
               })}
@@ -75,7 +86,7 @@ export const ReceiptTemplate = React.forwardRef<HTMLDivElement, ReceiptProps>(
           </div>
           <div className="flex justify-between">
             <span>Pelanggan:</span>
-            <span className="font-bold truncate max-w-[120px]">
+            <span className="font-bold truncate max-w-30">
               {props.customerName}
             </span>
           </div>
@@ -88,7 +99,7 @@ export const ReceiptTemplate = React.forwardRef<HTMLDivElement, ReceiptProps>(
           <div className="flex justify-between">
             <span>Tipe:</span>
             <span className="uppercase">
-              {props.orderType === 'dine_in' ? 'Dine In' : 'Take Away'}
+              {props.orderType === 'dine_in' ? 'Makan Ditempat' : 'Bungkus'}
             </span>
           </div>
         </div>
@@ -103,7 +114,9 @@ export const ReceiptTemplate = React.forwardRef<HTMLDivElement, ReceiptProps>(
                 <span>
                   {item.quantity} x {formatRupiah(item.price).replace('Rp', '')}
                 </span>
-                <span>{formatRupiah(item.quantity * item.price)}</span>
+                <span className="font-medium text-black">
+                    {formatRupiah(item.quantity * item.price)}
+                </span>
               </div>
             </div>
           ))}
@@ -118,14 +131,6 @@ export const ReceiptTemplate = React.forwardRef<HTMLDivElement, ReceiptProps>(
             <span>{formatRupiah(props.subtotal)}</span>
           </div>
 
-          {/* Pajak (Hanya tampil jika > 0) */}
-          {props.taxAmount > 0 && (
-            <div className="flex justify-between text-[10px] text-gray-600">
-              <span>Pajak (Tax)</span>
-              <span>{formatRupiah(props.taxAmount)}</span>
-            </div>
-          )}
-
           {/* Diskon (Hanya tampil jika > 0) */}
           {props.discountAmount && props.discountAmount > 0 ? (
             <div className="flex justify-between text-[10px] text-gray-600">
@@ -133,6 +138,14 @@ export const ReceiptTemplate = React.forwardRef<HTMLDivElement, ReceiptProps>(
               <span>-{formatRupiah(props.discountAmount)}</span>
             </div>
           ) : null}
+
+          {/* Pajak (Hanya tampil jika > 0) */}
+          {props.taxAmount > 0 && (
+            <div className="flex justify-between text-[10px] text-gray-600">
+              <span>Pajak (Tax)</span>
+              <span>{formatRupiah(props.taxAmount)}</span>
+            </div>
+          )}
 
           {/* TOTAL FINAL */}
           <div className="flex justify-between font-bold text-sm mt-1 border-t border-black border-dashed pt-1">
@@ -148,7 +161,8 @@ export const ReceiptTemplate = React.forwardRef<HTMLDivElement, ReceiptProps>(
               <span className="italic text-[10px]">Split Payment:</span>
               {props.payments.map((p, i) => (
                 <div key={i} className="flex justify-between text-[11px]">
-                  <span className="uppercase">- {p.method}</span>
+                  {/* 🔥 Akses p.paymentMethod */}
+                  <span className="uppercase">- {p.paymentMethod}</span>
                   <span>{formatRupiah(p.amount)}</span>
                 </div>
               ))}
@@ -171,7 +185,7 @@ export const ReceiptTemplate = React.forwardRef<HTMLDivElement, ReceiptProps>(
 
         {/* --- FOOTER --- */}
         <div className="text-center text-[10px] space-y-1">
-          <p className="whitespace-pre-wrap">
+          <p className="whitespace-pre-wrap leading-snug">
             {props.receiptFooter || 'Terima Kasih atas Kunjungan Anda'}
           </p>
           <p className="mt-2 text-[9px] text-gray-400">

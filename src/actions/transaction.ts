@@ -15,7 +15,7 @@ import { eq, sql, gte, desc } from 'drizzle-orm';
 
 type CheckoutResult =
   | { success: false; message: string; data?: never }
-  | { success: true; message: string; data: Order };
+  | { success: true; message: string; data: Order }; // Kita kembalikan Order mentah (String props)
 
 type CheckoutItem = {
   id: number;
@@ -51,7 +51,7 @@ type CustomerData = {
 
 export async function processCheckout(
   items: CheckoutItem[],
-  customer: CustomerData // <--- Perhatikan nama variabel ini adalah 'customer'
+  customer: CustomerData
 ): Promise<CheckoutResult> {
   // 1. Validasi Input Dasar
   if (!items.length) {
@@ -88,32 +88,29 @@ export async function processCheckout(
       const nextQueueNumber = (lastOrderToday?.queueNumber ?? 0) + 1;
 
       // B. Hitung Total Tagihan (Server Side Calculation)
-
-      // 1. Hitung Subtotal Murni (Harga barang di DB/Cart)
+      // 1. Hitung Subtotal Murni
       const subtotal = items.reduce(
         (sum, item) => sum + item.price * item.quantity,
         0
       );
 
-      // 2. Ambil Diskon & Pajak dari parameter Frontend
-      // (Idealnya diskon divalidasi ulang di sini, tapi ambil dari summary dulu agar cepat)
+      // 2. Ambil Diskon & Pajak
       const discountAmount = customer.summary.discountAmount || 0;
       const taxAmount = customer.summary.taxAmount || 0;
 
-      // 3. 🔥 PERBAIKAN RUMUS: (Subtotal - Diskon) + Pajak
+      // 3. Final Calculation
       const finalTotalAmount = subtotal - discountAmount + taxAmount;
 
       // Logic Validasi Pembayaran
       const totalPaid = customer.payments.reduce((sum, p) => sum + p.amount, 0);
 
-      // Cek apakah uang pembayaran kurang (gunakan finalTotalAmount)
-      if (totalPaid < finalTotalAmount) {
+      // Toleransi floating point 1 rupiah
+      if (totalPaid < finalTotalAmount - 1) {
         throw new Error(
           `Pembayaran kurang! Tagihan: ${finalTotalAmount}, Dibayar: ${totalPaid}`
         );
       }
 
-      // Hitung Kembalian
       const change = totalPaid - finalTotalAmount;
 
       const mainPaymentMethod =
@@ -123,21 +120,21 @@ export async function processCheckout(
       const [insertedOrder] = await tx
         .insert(orders)
         .values({
-          // Data Keuangan
-          subtotal: subtotal,
-          discountAmount: discountAmount, // 🔥 PENTING: Simpan nominal diskon
-          taxAmount: taxAmount,
-          totalAmount: finalTotalAmount,
+          // 🔥 FIX: Konversi Number ke String untuk kolom Decimal
+          subtotal: subtotal.toString(),
+          discountAmount: discountAmount.toString(),
+          taxAmount: taxAmount.toString(),
+          totalAmount: finalTotalAmount.toString(),
 
-          // Data Relasi
-          memberId: customer.memberId ?? null, // 🔥 FIX: Gunakan 'customer', bukan 'data'
-          discountId: customer.discountId ?? null, // 🔥 FIX: Gunakan 'customer', bukan 'data'
+          // Data Relasi (Handle undefined -> null)
+          memberId: customer.memberId ?? null,
+          discountId: customer.discountId ?? null,
 
           // Data Order Lainnya
           orderType: customer.orderType,
           paymentMethod: mainPaymentMethod,
-          amountPaid: totalPaid,
-          change: change,
+          amountPaid: totalPaid.toString(), // Decimal -> String
+          change: change.toString(),        // Decimal -> String
           customerName: customer.customerName || 'Guest',
           customerPhone: customer.customerPhone || null,
           tableNumber: finalTableNumber,
@@ -146,13 +143,18 @@ export async function processCheckout(
         .returning();
 
       // D. Insert Detail Pembayaran
-      for (const pay of customer.payments) {
-        await tx.insert(orderPayments).values({
-          orderId: insertedOrder.id,
-          paymentMethod: pay.method,
-          amount: pay.amount,
-          referenceId: pay.referenceId || null,
-        });
+      if (customer.payments.length > 0) {
+        // Kita pakai Promise.all biar insertnya parallel & cepat
+        await Promise.all(
+          customer.payments.map((pay) =>
+            tx.insert(orderPayments).values({
+              orderId: insertedOrder.id,
+              paymentMethod: pay.method,
+              amount: pay.amount.toString(), // Decimal -> String
+              referenceId: pay.referenceId || null,
+            })
+          )
+        );
       }
 
       // E. Insert Items & Update Stock
@@ -181,8 +183,9 @@ export async function processCheckout(
           orderId: insertedOrder.id,
           productId: item.id,
           quantity: item.quantity,
-          priceAtTime: item.price,
-          costPriceAtTime: productInfo.costPrice || '0',
+          priceAtTime: item.price.toString(), // Decimal -> String
+          // Handle costPrice (jika null, default '0')
+          costPriceAtTime: productInfo.costPrice || '0', 
           productNameSnapshot: productInfo.name,
           skuSnapshot: productInfo.sku || null,
         });
@@ -199,6 +202,7 @@ export async function processCheckout(
     });
 
     revalidatePath('/projects/smart-pos');
+    revalidatePath('/projects/smart-pos/history'); // Refresh history juga
 
     return {
       success: true,

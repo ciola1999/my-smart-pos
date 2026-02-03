@@ -1,10 +1,12 @@
-// src/features/smart-pos/actions.ts
 'use server';
 
 import { db } from '@/db';
 import { products } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
+
+// Path utama aplikasi kamu (agar UI langsung refresh saat data berubah)
+const MAIN_PATH = '/projects/smart-pos';
 
 export async function updateProductPrice(id: number, newPrice: number) {
   try {
@@ -14,17 +16,18 @@ export async function updateProductPrice(id: number, newPrice: number) {
     await db
       .update(products)
       .set({
-        price: newPrice,
+        // 🔥 FIX: Konversi ke string agar Drizzle/Postgres Decimal tidak error
+        price: newPrice.toString(),
         updatedAt: new Date(),
       })
       .where(eq(products.id, id));
 
-    // Revalidate agar tabel utama refresh datanya (termasuk badge margin)
-    revalidatePath('/dashboard/products');
+    // Revalidate halaman utama (supaya Inventory & POS terupdate)
+    revalidatePath(MAIN_PATH);
 
     return { success: true };
   } catch (error) {
-    console.error('Update Error:', error);
+    console.error('Update Price Error:', error);
     return { success: false, message: 'Gagal update harga' };
   }
 }
@@ -36,14 +39,13 @@ export async function updateProductCost(id: number, newCost: number) {
     await db
       .update(products)
       .set({
-        // Konversi ke string untuk tipe data DECIMAL di Postgres
+        // ✅ INI SUDAH BENAR (Good Job!)
         costPrice: newCost.toString(),
         updatedAt: new Date(),
       })
       .where(eq(products.id, id));
 
-    // Refresh halaman agar Margin & Profit otomatis terhitung ulang
-    revalidatePath('/dashboard/products');
+    revalidatePath(MAIN_PATH);
 
     return { success: true };
   } catch (error) {
@@ -54,15 +56,21 @@ export async function updateProductCost(id: number, newCost: number) {
 
 export async function updateProductStock(id: number, newStock: number) {
   try {
+    // Validasi stok
+    if (newStock < 0) throw new Error('Stok tidak boleh minus');
+
     await db
       .update(products)
-      .set({ stock: newStock })
+      .set({ 
+        stock: newStock,
+        updatedAt: new Date() 
+      })
       .where(eq(products.id, id));
 
-    revalidatePath('/dashboard/products'); // Refresh halaman agar data terbaru muncul
+    revalidatePath(MAIN_PATH); 
     return { success: true };
   } catch (error) {
-    console.error('Update stock error:', error);
+    console.error('Update Stock Error:', error);
     return { success: false, message: 'Gagal update stok' };
   }
 }
@@ -74,10 +82,13 @@ export async function toggleProductStatus(id: number, currentStatus: boolean) {
 
     await db
       .update(products)
-      .set({ isActive: newStatus })
+      .set({ 
+        isActive: newStatus,
+        updatedAt: new Date()
+      })
       .where(eq(products.id, id));
 
-    revalidatePath('/projects/smart-pos'); // Refresh halaman
+    revalidatePath(MAIN_PATH);
     return { success: true, newStatus };
   } catch (error) {
     console.error('Error toggle status:', error);

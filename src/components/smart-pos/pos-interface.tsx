@@ -61,18 +61,20 @@ import { processCheckout } from '@/actions/transaction';
 
 import { MemberSelector } from './member-selector'; // Pastikan path sesuai
 import { validateDiscount } from '@/actions/action'; // Server Action
-import { type Member, type Discount } from '@/db/schema'; // Type DB
-
 // --- TYPES (Strict Type-Safety) ---
-import type { Products, CartItem } from '@/types';
-import type { Order, StoreSetting, Tax } from '@/db/schema';
+import type { Products} from '@/types';
+import type { Order, StoreSetting, Tax, Discount, Member, Product } from '@/db/schema';
 import { ReceiptTemplate } from './ReceiptTemplate';
 
 // Interface Props
 interface POSInterfaceProps {
-  initialProducts: Products[];
+  initialProducts: Product[];
   storeSettings: StoreSetting | null;
   taxesData?: Tax[];
+}
+
+export interface CartItem extends Product {
+  quantity: number;
 }
 
 // State Form Customer
@@ -91,20 +93,32 @@ interface PaymentItem {
   referenceId: string;
 }
 
-// 🔥 BARU: Interface untuk State Data Sukses (Struk)
 interface SuccessTransactionState {
-  order: Order; // (Idealnya gunakan type 'Order' dari schema, tapi 'any' sementara aman)
+  // Kita pakai Partial<Order> atau Custom Type karena Order dari DB isinya string semua untuk uang
+  order: {
+    id: number;
+    subtotal: number | string | null;
+    taxAmount: number | string | null;
+    discountAmount: number | string | null;
+    totalAmount: number | string; // Total amount pasti ada
+    amountPaid: number | string | null;
+    change: number | string | null;
+    createdAt: Date | string | null;
+    customerName?: string | null;
+    customerPhone?: string | null;
+    tableNumber?: string | null;
+    orderType: 'dine_in' | 'take_away' | string;
+    paymentMethod: 'cash' | 'debit' | 'qris' | 'split' | string;
+  }; 
   items: {
     id: number;
-    name: string; // Pastikan CartItem kamu punya field name
+    name: string;
     quantity: number;
-    price: number;
+    price: number; // Di sini kita paksa number biar Receipt aman
   }[];
   cashReceived: number;
   change: number;
   payments: PaymentItem[];
-
-  // 🔥 FIELD TAMBAHAN (Solusi Error Kamu)
   member?: Member | null;
   discountAmount?: number;
 }
@@ -175,37 +189,44 @@ export default function POSInterface({
   // 2. 🔥 UPDATE LOGIC: Subtotal -> Diskon -> Pajak -> Total
   const { subtotal, discountAmount, taxAmount, finalTotal } = useMemo(() => {
     // A. Hitung Subtotal Murni
-    const sub = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
+    // 🔥 FIX: Tambahkan Number() di sekitar item.price
+    const sub = cart.reduce((acc, item) => acc + Number(item.price) * item.quantity, 0);
 
-    // B. Hitung Nominal Diskon
+    // B. Hitung Diskon
     let disc = 0;
     if (activeDiscount) {
       if (activeDiscount.type === 'PERCENTAGE') {
-        // Rumus: Subtotal * (Nilai% / 100)
-        disc = Math.round(sub * (Number(activeDiscount.value) / 100));
+        // Asumsikan value percentage disimpan sebagai string decimal juga di DB
+        disc = (sub * Number(activeDiscount.value)) / 100;
       } else {
-        // Rumus: Potongan Tetap (Fixed)
-        disc = Math.round(Number(activeDiscount.value));
+        disc = Number(activeDiscount.value);
       }
-
-      // Safety: Jangan sampai diskon lebih besar dari harga barang
-      if (disc > sub) disc = sub;
     }
+    
+    // Validasi agar diskon tidak minus
+    if (disc > sub) disc = sub;
 
-    // C. Hitung DPP (Dasar Pengenaan Pajak) / Taxable Amount
+    // C. Hitung Pajak (Tax)
+    // Asumsi: Pajak dihitung dari (Subtotal - Diskon)
     const taxableAmount = sub - disc;
+    
+    // Hitung total pajak dari semua tax yang aktif
+    // Asumsikan taxesData?.rate juga string dari DB
+    const tax = (taxesData || []).reduce(
+      (acc, t) => acc + (taxableAmount * Number(t.rate)) / 100, 
+      0
+    );
 
-    // D. Hitung Pajak (Dari harga yang sudah didiskon)
-    // Rumus: DPP * (Rate / 100)
-    const tax = Math.round((taxableAmount * taxRate) / 100);
+    // D. Final Total
+    const total = taxableAmount + tax;
 
     return {
       subtotal: sub,
-      discountAmount: disc, // Return variable baru ini
+      discountAmount: disc,
       taxAmount: tax,
-      finalTotal: taxableAmount + tax, // Total yang harus dibayar
+      finalTotal: total,
     };
-  }, [cart, taxRate, activeDiscount]); // Tambahkan activeDiscount ke dependency
+  }, [cart, activeDiscount, taxesData]);
 
   // 3. Hitung Split Bill (Tetap sama)
   const totalPaidSplit = useMemo(
@@ -292,7 +313,7 @@ export default function POSInterface({
   // --- ACTIONS ---
 
   // 1. Add to Cart (Optimized)
-  const addToCart = useCallback((product: Products) => {
+  const addToCart = useCallback((product: Product) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.id === product.id);
 
@@ -419,52 +440,67 @@ export default function POSInterface({
 
     // C. Server Action
     startTransition(async () => {
-      const res = await processCheckout(
-        cart.map((i) => ({ id: i.id, quantity: i.quantity, price: i.price })),
-        {
-          ...customerForm,
-          // 🔥 BARU: Kirim Data Member & Diskon ke Backend
-          memberId: selectedMember?.id ?? null,
-          discountId: activeDiscount?.id ?? null,
+      // 1. Siapkan Argument Pertama: ITEMS
+      const itemsPayload = cart.map((i) => ({ 
+        id: i.id, 
+        quantity: i.quantity, 
+        price: Number(i.price) 
+      }));
 
-          payments: finalPayments,
+      // 2. Siapkan Argument Kedua: CUSTOMER DATA
+      // Sesuaikan strukturnya dengan type CustomerData di transaction.ts
+      const customerPayload = {
+        orderType: customerForm.orderType,
+        tableNumber: customerForm.tableNumber,
+        customerName: customerForm.customerName || 'Guest',
+        customerPhone: customerForm.customerPhone,
+        payments: finalPayments, // Pastikan struktur { method, amount } match
+        
+        // Data Relasi
+        memberId: selectedMember?.id ?? null,
+        discountId: activeDiscount?.id ?? null,
 
-          // 🔥 BARU: Kirim Rincian Angka Lengkap
-          summary: {
+        // Snapshot Keuangan
+        summary: {
             subtotal: subtotal,
-            discountAmount: discountAmount, // Penting untuk laporan
+            discountAmount: discountAmount,
             taxAmount: taxAmount,
             totalAmount: finalTotal,
-          },
         }
-      );
+      };
+
+      // 3. Panggil Server Action dengan 2 ARGUMEN TERPISAH
+      // Arg 1: Items, Arg 2: Customer Data
+      const res = await processCheckout(itemsPayload, customerPayload);
 
       if (res.success && res.data) {
         // Update data untuk ditampilkan di Struk/Success Dialog
         setSuccessData({
-          order: res.data,
-          items: [...cart],
+          order: res.data, 
+          // Pastikan item UI tetap number agar tidak error di receipt
+          items: cart.map((c) => ({
+            id: c.id,
+            name: c.name,
+            quantity: c.quantity,
+            price: Number(c.price), // Pastikan price jadi number
+          })),
           cashReceived: isSplitMode ? totalPaidSplit : Number(cashGiven),
           change: isSplitMode ? 0 : Number(cashGiven) - finalTotal,
           payments: finalPayments,
-          // 🔥 BARU: Kirim info ini agar struk bisa print nama member & diskon
           member: selectedMember,
           discountAmount: discountAmount,
         });
 
-        // Reset Semua State
+        // Reset Semua State UI
         setCart([]);
         setCashGiven('');
         setIsSplitMode(false);
         setSplitPayments([]);
-
-        // 🔥 BARU: Reset Member & Voucher
         setSelectedMember(null);
         setActiveDiscount(null);
         setVoucherCode('');
-
-        setIsCheckoutOpen(false);
-        setIsCartSheetOpen(false);
+        setIsCheckoutOpen(false); // Tutup dialog bayar
+        setIsCartSheetOpen(false); // Tutup drawer cart
         setCustomerForm({
           tableNumber: '',
           customerName: '',
@@ -481,84 +517,83 @@ export default function POSInterface({
 
   // 5. WhatsApp Generator
   const handleSendWhatsApp = () => {
-    if (!successData?.order) return;
-    const { order, items, payments } = successData;
+    // 1. Cek Ketersediaan Data
+    if (!successData || !successData.order) {
+      toast.error('Data transaksi tidak ditemukan.');
+      return;
+    }
 
-    // --- 1. HEADER ---
-    let text = `*STRUK PEMBAYARAN*\n`;
-    text += `*${storeSettings?.name || 'NEXPOS'}*\n`;
-    text += `--------------------------------\n`;
-    text += `🆔 Order ID  : #${order.id}\n`;
-    // Gunakan tanggal dari order (createdAt) biar akurat
-    text += `📅 Tanggal   : ${new Date(
-      order.createdAt || new Date()
-    ).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}\n`;
-    text += `👤 Pelanggan : ${order.customerName || 'Guest'}\n`;
-    if (order.tableNumber) text += `🪑 Meja      : ${order.tableNumber}\n`;
-    text += `--------------------------------\n\n`;
+    const order = successData.order;
+    
+    // 2. Validasi Nomor HP
+    let phone = order.customerPhone;
+    if (!phone) {
+      toast.error('Nomor HP pelanggan tidak tersedia (kosong).');
+      return;
+    }
 
-    // --- 2. LIST ITEMS ---
-    items.forEach((item) => {
-      // Potong nama barang jika terlalu panjang (opsional, misal max 25 char)
-      const cleanName =
-        item.name.length > 25 ? item.name.substring(0, 22) + '...' : item.name;
+    // 3. Sanitasi Nomor HP (08xx -> 628xx)
+    phone = phone.replace(/\D/g, ''); // Hapus spasi, strip, dll
+    if (phone.startsWith('0')) {
+      phone = '62' + phone.substring(1);
+    }
 
-      text += `*${cleanName}*\n`;
-      text += `   ${item.quantity} x ${formatRupiah(
-        item.price
-      )} = ${formatRupiah(item.price * item.quantity)}\n`;
+    // 4. Siapkan Data Pendukung
+    const storeName = storeSettings?.name || 'NexPOS';
+    const dateStr = new Date(order.createdAt || new Date()).toLocaleString('id-ID', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
     });
+    
+    // Logic Item List
+    const itemsList = successData.items
+      .map(
+        (item) =>
+          `• ${item.name} (x${item.quantity}) : ${formatRupiah(
+            Number(item.price) * item.quantity
+          )}`
+      )
+      .join('%0a');
 
-    text += `\n--------------------------------\n`;
+    // Logic Info Tambahan (Meja/Order Type)
+    const orderTypeLabel = order.orderType === 'dine_in' ? 'Makan di Tempat' : 'Bungkus / Take Away';
+    const tableInfo = order.tableNumber ? `Meja: ${order.tableNumber}%0a` : '';
 
-    // --- 3. SUMMARY (SUBTOTAL, TAX, TOTAL) ---
-    // Tampilkan subtotal jika ada (dari update backend tadi)
-    if (order.subtotal && order.subtotal > 0) {
-      text += `Subtotal    : ${formatRupiah(order.subtotal)}\n`;
-    }
+    // 5. Susun Pesan (Gunakan %0a untuk Enter)
+    const message =
+      `*STRUK DIGITAL - ${storeName.toUpperCase()}*%0a` +
+      `--------------------------------%0a` +
+      `No. Order : #${order.id}%0a` +
+      `Tanggal   : ${dateStr}%0a` +
+      `Pelanggan : ${order.customerName || 'Guest'}%0a` +
+      `${tableInfo}` + // Hanya muncul jika ada nomor meja
+      `Tipe      : ${orderTypeLabel}%0a` +
+      `--------------------------------%0a` +
+      `*DAFTAR ITEM:*%0a` +
+      `${itemsList}%0a` +
+      `--------------------------------%0a` +
+      `Subtotal  : ${formatRupiah(Number(order.subtotal))}%0a` +
+      // Tampilkan diskon hanya jika ada
+      (Number(order.discountAmount) > 0 
+        ? `Diskon    : -${formatRupiah(Number(order.discountAmount))}%0a` 
+        : '') +
+      // Tampilkan pajak hanya jika ada
+      (Number(order.taxAmount) > 0 
+        ? `Pajak     : ${formatRupiah(Number(order.taxAmount))}%0a` 
+        : '') +
+      `--------------------------------%0a` +
+      `*TOTAL     : ${formatRupiah(Number(order.totalAmount))}*%0a` +
+      `--------------------------------%0a` +
+      `Dibayar   : ${formatRupiah(Number(order.amountPaid))}%0a` +
+      `Kembalian : ${formatRupiah(Number(order.change))}%0a` +
+      `Metode    : ${(order.paymentMethod || '').toUpperCase()}%0a` +
+      `Status    : LUNAS ✅%0a` +
+      `--------------------------------%0a` +
+      `Terima kasih telah berbelanja! 🙏%0a` +
+      `Simpan struk ini sebagai bukti pembayaran sah.`;
 
-    // Tampilkan pajak jika ada
-    if (order.taxAmount && order.taxAmount > 0) {
-      text += `Pajak       : ${formatRupiah(order.taxAmount)}\n`;
-    }
-
-    // Total Akhir (Tebal)
-    text += `*TOTAL       : ${formatRupiah(order.totalAmount)}*\n`;
-    text += `--------------------------------\n`;
-
-    // --- 4. DETAIL PEMBAYARAN ---
-    if (order.paymentMethod === 'split' && payments) {
-      text += `💳 *SPLIT PAYMENT:*\n`;
-      payments.forEach(
-        (p) =>
-          (text += `   • ${p.method.toUpperCase()} : ${formatRupiah(
-            p.amount
-          )}\n`)
-      );
-    } else {
-      // Single Payment
-      text += `Metode      : ${order.paymentMethod?.toUpperCase()}\n`;
-
-      // Jika Cash, tampilkan Bayar & Kembali (Ambil dari DB: amountPaid & change)
-      if (order.paymentMethod === 'cash') {
-        text += `Tunai       : ${formatRupiah(order.amountPaid || 0)}\n`;
-        text += `Kembali     : ${formatRupiah(order.change || 0)}\n`;
-      }
-    }
-
-    // --- 5. FOOTER ---
-    text += `\n_Terima kasih telah berbelanja!_ 🙏\n`;
-    text += `_Simpan struk ini sebagai bukti sah._`;
-
-    // --- 6. KIRIM ---
-    const phone = order.customerPhone || customerForm.customerPhone;
-    const target = phone ? phone.replace(/\D/g, '').replace(/^0/, '62') : '';
-
-    const url = target
-      ? `https://wa.me/${target}?text=${encodeURIComponent(text)}`
-      : `https://wa.me/?text=${encodeURIComponent(text)}`;
-
-    window.open(url, '_blank');
+    // 6. Buka WhatsApp
+    window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
   };
 
   // --- RENDER HELPERS (UI COMPONENTS) ---
@@ -595,7 +630,7 @@ export default function POSInterface({
                 {item.name}
               </p>
               <p className="text-xs text-muted-foreground font-mono mt-0.5">
-                {formatRupiah(item.price)} x {item.quantity}
+                {formatRupiah(Number(item.price))} x {item.quantity}
               </p>
             </div>
 
@@ -773,7 +808,7 @@ export default function POSInterface({
 
                     <div className="mt-auto flex items-end justify-between pt-3">
                       <span className="text-primary font-bold text-sm">
-                        {formatRupiah(product.price)}
+                        {formatRupiah(Number(product.price))}
                       </span>
                       <div className="h-7 w-7 rounded-full bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                         <Plus size={14} strokeWidth={3} />
@@ -879,12 +914,12 @@ export default function POSInterface({
                         {item.quantity}x {item.name}
                       </span>
                       <span className="font-mono font-bold shrink-0">
-                        {formatRupiah(item.price * item.quantity)}
+                        {formatRupiah(Number(item.price) * item.quantity)}
                       </span>
                     </div>
                     {item.quantity > 1 && (
                       <span className="text-[10px] text-muted-foreground ml-4">
-                        (@ {formatRupiah(item.price)})
+                        (@ {formatRupiah(Number(item.price))})
                       </span>
                     )}
                   </div>
@@ -1463,7 +1498,7 @@ export default function POSInterface({
               <span className="text-muted-foreground">Total Tagihan</span>
               <span className="font-bold">
                 {successData?.order
-                  ? formatRupiah(successData.order.totalAmount)
+                  ? formatRupiah(Number(successData.order.totalAmount))
                   : 0}
               </span>
             </div>
@@ -1511,10 +1546,10 @@ export default function POSInterface({
             storeAddress={storeSettings?.address || 'Alamat Toko'}
             storePhone={storeSettings?.phone || ''}
             receiptFooter={storeSettings?.receiptFooter || undefined}
-            subtotal={successData.order.subtotal || 0}
-            taxAmount={successData.order.taxAmount || 0}
-            discountAmount={successData.order.discountAmount || 0}
-            totalAmount={successData.order.totalAmount || 0}
+            subtotal={Number(successData.order.subtotal || 0)}
+            taxAmount={Number(successData.order.taxAmount || 0)}
+            discountAmount={Number(successData.order.discountAmount || 0)}
+            totalAmount={Number(successData.order.totalAmount || 0)}
             cashierName="Admin"
             customerName={successData.order.customerName || 'Pelanggan Umum'}
             tableNumber={successData.order.tableNumber || undefined}
@@ -1522,13 +1557,17 @@ export default function POSInterface({
             items={successData.items.map((item) => ({
               id: item.id,
               name: item.name,
-              price: item.price,
+              price: Number(item.price), // Jaga-jaga
               quantity: item.quantity,
             }))}
             paymentMethod={successData.order.paymentMethod}
-            amountPaid={successData.order.amountPaid || 0}
-            changeAmount={successData.order.change || 0}
-            payments={successData.payments || []}
+            amountPaid={Number(successData.order.amountPaid || 0)} // 🔥 Fix
+            changeAmount={Number(successData.order.change || 0)}
+            payments={(successData.payments || []).map((p) => ({
+              // 🔥 FIX: Mapping manual dari 'method' (state) ke 'paymentMethod' (props)
+              paymentMethod: p.method, 
+              amount: p.amount,
+            }))}
           />
         )}
       </div>
