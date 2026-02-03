@@ -1,5 +1,4 @@
-// E:\Belajar Javascript\.vscode\Project-Freelance\nexlanding\frontend\src\features\smart-pos\_components\views\SettingsView.tsx
-
+// src/components/smart-pos/views/SettingsView.tsx
 'use client';
 
 import { useActionState, useEffect, useRef } from 'react';
@@ -25,14 +24,13 @@ import {
   Save,
   Globe,
   Percent,
-  WalletCards,
 } from 'lucide-react';
 import gsap from 'gsap';
 import { cn } from '@/lib/utils';
 
 interface SettingsViewProps {
   initialData: StoreSetting | null;
-  taxesData: Tax[]; // 👈 Tambahkan ini
+  taxesData: Tax[];
 }
 
 export default function SettingsView({
@@ -49,7 +47,7 @@ export default function SettingsView({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // --- ANIMASI GSAP ---
+  // --- ANIMASI GSAP (Mantap!) ---
   useEffect(() => {
     const ctx = gsap.context(() => {
       gsap.from('.settings-card', {
@@ -70,9 +68,7 @@ export default function SettingsView({
     } else if (state.status === 'error') {
       toast.error('Gagal Menyimpan', { description: state.message });
     }
-  }, [state, state.timestamp]);
-
-  const ppnData = taxesData.find((t) => t.name === 'PPn');
+  }, [state]); // timestamp tidak wajib jika state berubah objectnya
 
   return (
     <div
@@ -107,7 +103,6 @@ export default function SettingsView({
                 <Label className="text-gray-300">
                   Nama Toko <span className="text-red-500">*</span>
                 </Label>
-                {/* Kita paksa text-white dan border lebih terang */}
                 <Input
                   name="name"
                   defaultValue={initialData?.name || ''}
@@ -139,7 +134,7 @@ export default function SettingsView({
             </CardContent>
           </Card>
 
-          {/* --- CARD 2: LOKASI (YANG TADI GELAP) --- */}
+          {/* --- CARD 2: LOKASI --- */}
           <Card className="settings-card lg:col-span-2 border-white/10 bg-[#18181b] shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-blue-400">
@@ -206,7 +201,7 @@ export default function SettingsView({
             </CardContent>
           </Card>
 
-          {/* --- CARD 4: PAJAK (UPDATED) --- */}
+          {/* --- CARD 4: PAJAK (PERFECT!) --- */}
           <Card className="settings-card lg:col-span-1 border-white/10 bg-[#18181b] shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-amber-400">
@@ -219,9 +214,8 @@ export default function SettingsView({
             </CardHeader>
 
             <CardContent>
-              {/* LOGIC BARU: Jika kosong, tampilkan Input Default, Jika ada isinya, tampilkan datanya */}
               {taxesData.length === 0 ? (
-                /* --- STATE 1: DATABASE KOSONG (Tampilkan Input agar bisa diisi) --- */
+                /* --- STATE 1: KOSONG --- */
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <Label className="text-gray-200 font-medium">
@@ -230,7 +224,6 @@ export default function SettingsView({
                     <div className="w-2 h-2 rounded-full bg-gray-500 animate-pulse" />
                   </div>
                   <div className="relative group">
-                    {/* PENTING: name="taxRate" harus sama dengan yang diminta Server Action */}
                     <Input
                       name="taxRate"
                       type="number"
@@ -248,7 +241,7 @@ export default function SettingsView({
                   </p>
                 </div>
               ) : (
-                /* --- STATE 2: DATA ADA (Looping Data) --- */
+                /* --- STATE 2: DATA ADA --- */
                 taxesData.map((tax) => (
                   <div key={tax.id} className="space-y-3 mb-4 last:mb-0">
                     <div className="flex justify-between items-center">
@@ -265,11 +258,14 @@ export default function SettingsView({
                     </div>
 
                     <div className="relative group">
-                      {/* Kita set name="taxRate" juga agar logic server action tetap jalan untuk single tax */}
+                      {/* 🔥 PENTING: Hidden Input ID agar server tahu mana yang diedit */}
+                      <input type="hidden" name="taxId" value={tax.id} />
+                      
                       <Input
                         name="taxRate"
                         type="number"
                         step="0.01"
+                        // 🔥 INI BAGUS SEKALI: toString() menghindari error decimal
                         defaultValue={tax.rate.toString()}
                         className="bg-black/50 border-white/20 text-white text-right pr-10 font-mono text-lg focus:border-amber-500 transition-all"
                       />
@@ -284,8 +280,8 @@ export default function SettingsView({
           </Card>
         </div>
 
-        {/* --- TOMBOL SIMPAN (FIXED) --- */}
-        <div className="fixed bottom-8 right-8 z-[9999]">
+        {/* --- TOMBOL SIMPAN --- */}
+        <div className="fixed bottom-8 right-8 z-9999">
           <Button
             type="submit"
             disabled={isPending}

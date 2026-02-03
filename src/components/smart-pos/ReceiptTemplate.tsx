@@ -29,6 +29,7 @@ interface ReceiptProps {
   paymentMethod: string;
   // 🔥 Ubah 'method' jadi 'paymentMethod' biar konsisten sama DB
   payments?: { paymentMethod: string; amount: number }[]; 
+  cashAmount?: number;   
 
   // Metadata Transaksi
   date: Date | string;

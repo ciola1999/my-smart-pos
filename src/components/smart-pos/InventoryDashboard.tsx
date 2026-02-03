@@ -1,3 +1,5 @@
+// Project\smart-pos-v2\src\components\smart-pos\InventoryDashboard.tsx
+
 'use client';
 
 import { useRef, useState } from 'react';
@@ -34,11 +36,15 @@ export default function InventoryDashboard({
   // LOGIC FILTER
   // Array.filter mempertahankan urutan. Jadi jika 'products' dari server sudah urut,
   // maka 'filteredProducts' juga akan tetap urut (Sorted). Aman! ✅
-  const filteredProducts = products.filter(
-    (p) =>
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredProducts = products.filter((p) => {
+  const query = searchQuery.toLowerCase();
+  const nameMatch = p.name?.toLowerCase().includes(query) || false;
+  const skuMatch = p.sku?.toLowerCase().includes(query) || false;
+  // Bisa tambah search by barcode juga kalau mau
+  const barcodeMatch = p.barcode?.toLowerCase().includes(query) || false;
+  
+  return nameMatch || skuMatch || barcodeMatch;
+});
 
   // --- ANIMASI GSAP (Tetap Sama) ---
   useGSAP(

@@ -78,7 +78,7 @@ export function RecentSales({ data }: RecentSalesProps) {
                   style: 'currency',
                   currency: 'IDR',
                   maximumFractionDigits: 0,
-                }).format(order.totalAmount)}
+                }).format(Number(order.totalAmount))}
               </p>
               <p className="text-xs text-gray-500 group-hover:text-[#dfff4f] transition-colors">
                 {formatDistanceToNow(new Date(order.createdAt), {

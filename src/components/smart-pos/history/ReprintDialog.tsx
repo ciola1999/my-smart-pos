@@ -14,11 +14,10 @@ import { toast } from 'sonner';
 import gsap from 'gsap';
 import { ReceiptTemplate } from '../ReceiptTemplate';
 
-// 1. IMPORT LIBRARY INI
 import { useReactToPrint } from 'react-to-print';
 import { toPng } from 'html-to-image';
 
-// ... (Interface ReceiptItem, ReceiptPayment, dll TETAP SAMA, tidak perlu diubah) ...
+// --- INTERFACES ---
 interface ReceiptItem {
   productNameSnapshot: string;
   quantity: number;
@@ -66,23 +65,18 @@ export function ReprintDialog({
   const [content, setContent] = useState<ReceiptData | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Ref untuk tombol (animasi)
   const btnPrintRef = useRef<HTMLButtonElement>(null);
-
-  // Ref untuk komponen Struk
   const receiptRef = useRef<HTMLDivElement>(null);
 
-  // 2. SETUP REACT-TO-PRINT
   const handlePrint = useReactToPrint({
-    contentRef: receiptRef, // Mengambil konten dari ref receipt
+    contentRef: receiptRef,
     documentTitle: `Struk-${orderId || 'Transaksi'}`,
     onAfterPrint: () => console.log('Print success'),
     onPrintError: () => toast.error('Gagal mencetak'),
   });
 
-  // --- LOGIC SHARE BUTTON (VERSI AMAN) ---
+  // --- LOGIC SHARE (Image) ---
   const handleShare = async () => {
-    // 1. Ambil elemen asli
     const originalElement = document.getElementById('receipt-preview-box');
 
     if (!originalElement) {
@@ -95,43 +89,33 @@ export function ReprintDialog({
     const toastId = toast.loading('Memproses gambar...');
 
     try {
-      // 2. TEKNIK CLONING MANUAL (Tetap dipakai karena paling stabil)
       const clone = originalElement.cloneNode(true) as HTMLElement;
 
-      // 3. Setup Clone (Sembunyikan dari layar)
       clone.style.position = 'fixed';
       clone.style.top = '-10000px';
       clone.style.left = '-10000px';
       clone.style.zIndex = '-1000';
-      clone.style.width = '380px'; // Lebar tetap agar hasil konsisten
-      clone.style.background = 'white'; // Pastikan background putih
-
-      // Reset margin agar tidak berantakan
+      clone.style.width = '380px';
+      clone.style.background = 'white';
       clone.style.margin = '0';
       clone.style.transform = 'none';
 
-      // 4. Tempel ke Body
       document.body.appendChild(clone);
 
-      // 5. PROSES FOTO MENGGUNAKAN HTML-TO-IMAGE
-      // Library ini support CSS modern (lab/oklch) jadi tidak akan error
       const dataUrl = await toPng(clone, {
-        cacheBust: true, // Paksa refresh gambar (hindari cache)
+        cacheBust: true,
         backgroundColor: '#ffffff',
-        pixelRatio: 2, // Resolusi tajam (setara scale: 2)
+        pixelRatio: 2,
       });
 
-      // 6. Hapus Clone
       document.body.removeChild(clone);
 
-      // 7. Convert DataURL (Base64) ke Blob (File Object)
       const res = await fetch(dataUrl);
       const blob = await res.blob();
       const file = new File([blob], `struk-${orderId}.png`, {
         type: 'image/png',
       });
 
-      // --- LOGIC SHARE / DOWNLOAD (Sama seperti sebelumnya) ---
       if (navigator.share) {
         try {
           await navigator.share({
@@ -145,9 +129,8 @@ export function ReprintDialog({
           toast.dismiss(toastId);
         }
       } else {
-        // Fallback Download PC
         const a = document.createElement('a');
-        a.href = dataUrl; // Bisa langsung pakai dataUrl
+        a.href = dataUrl;
         a.download = `struk-${orderId}.png`;
         document.body.appendChild(a);
         a.click();
@@ -160,8 +143,8 @@ export function ReprintDialog({
       console.error('Generate Image Error:', error);
       toast.dismiss(toastId);
       toast.error('Gagal memproses gambar');
-
-      // Cleanup jika error
+      
+      // Cleanup extra safety
       const leftover = document.body.lastElementChild as HTMLElement;
       if (leftover && leftover.style.top === '-10000px') {
         document.body.removeChild(leftover);
@@ -171,21 +154,19 @@ export function ReprintDialog({
     }
   };
 
+  // --- LOGIC EMAIL ---
   const handleEmail = () => {
-    // 1. Cek Data dulu
     if (!content || !content.transaction) {
       toast.error('Data transaksi belum siap');
       return;
     }
 
-    // 2. Susun Data (Sama seperti sebelumnya)
     const subject = `Struk Transaksi #${orderId}`;
     const storeInfo = `${content.store.name}\n${content.store.address || ''}`;
     const dateInfo = `Tanggal: ${new Date(
       content.transaction.createdAt
     ).toLocaleString('id-ID')}`;
 
-    // List Barang
     const itemsList = content.transaction.items
       .map(
         (item) =>
@@ -200,10 +181,8 @@ export function ReprintDialog({
     )}`;
     const footer = `Terima kasih!`;
 
-    // 3. Susun Body dengan encodeURIComponent
     const bodyText = `${storeInfo}\n\n${dateInfo}\n\nBelanjaan:\n${itemsList}\n\n${totals}\n\n${footer}`;
 
-    // Cek panjang karakter (Browser punya limit sekitar 2000 karakter untuk URL)
     if (bodyText.length > 1500) {
       toast.warning('Struk terlalu panjang untuk direct email');
     }
@@ -213,12 +192,7 @@ export function ReprintDialog({
       subject
     )}&body=${emailBody}`;
 
-    // 4. EKSEKUSI: Gunakan window.open agar lebih agresif membuka aplikasi
     try {
-      // Log untuk memastikan kode jalan
-      console.log('Mencoba membuka email client...');
-
-      // Membuka di tab baru seringkali memancing browser utk mendeteksi aplikasi mail
       window.open(mailtoLink, '_blank');
     } catch (e) {
       console.error(e);
@@ -226,6 +200,7 @@ export function ReprintDialog({
     }
   };
 
+  // --- LOGIC COPY TEXT ---
   const handleCopyText = async () => {
     if (!content) return;
 
@@ -256,7 +231,6 @@ Terima kasih!
     }
   };
 
-  // Fetch Data Effect (TETAP SAMA)
   useEffect(() => {
     if (!open || !orderId) return;
     let isActive = true;
@@ -285,7 +259,6 @@ Terima kasih!
     };
   }, [open, orderId, onOpenChange]);
 
-  // Animasi GSAP (TETAP SAMA)
   useEffect(() => {
     if (!loading && content && receiptRef.current) {
       gsap.fromTo(
@@ -296,9 +269,6 @@ Terima kasih!
     }
   }, [loading, content]);
 
-  // Magnetic Button Logic (Bisa dihapus jika error, tapi kalau jalan biarkan saja)
-  // ... (Kode Magnetic Button kamu di sini) ...
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[400px] bg-zinc-950/90 border-zinc-800 backdrop-blur-xl p-0 overflow-hidden gap-0 text-zinc-100">
@@ -306,44 +276,35 @@ Terima kasih!
           <DialogTitle>Reprint Struk</DialogTitle>
         </DialogHeader>
 
-        {/* Header Dialog */}
+        {/* Header */}
         <div className="relative flex items-center justify-center p-4 border-b border-zinc-800">
-          {/* Container Tombol Kiri */}
           <div className="absolute left-4 flex gap-2">
-            {/* Tombol Share Gambar (Yang sudah berhasil tadi) */}
             <Button
               size="icon"
               variant="ghost"
               onClick={handleShare}
               disabled={loading}
               className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-800"
-              title="Bagikan Gambar (WA/Sosmed)"
             >
               <Share2 className="w-4 h-4" />
             </Button>
-
-            {/* Tombol Email (Baru) */}
             <Button
               size="icon"
               variant="ghost"
               onClick={handleEmail}
               className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-800"
-              title="Kirim Rincian via Email"
             >
               <Mail className="w-4 h-4" />
             </Button>
-            {/* 3. Copy Teks (BARU - Solusi untuk PC) */}
             <Button
               size="icon"
               variant="ghost"
               onClick={handleCopyText}
               className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-800"
-              title="Salin Teks Struk"
             >
               <Copy className="w-3.5 h-3.5" />
             </Button>
           </div>
-
           <span className="text-sm font-bold text-zinc-200">Preview Struk</span>
         </div>
 
@@ -356,20 +317,19 @@ Terima kasih!
             </div>
           ) : content ? (
             <div className="shadow-2xl">
-              {/* 3. PASTIKAN REF DIPASANG DI SINI 
-                 React-to-print akan mengambil elemen ini dan isinya saja 
-              */}
               <div
                 id="receipt-preview-box"
                 ref={receiptRef}
                 className="bg-white text-black"
               >
                 <ReceiptTemplate
-                  // Mapping props (Sama seperti kodemu sebelumnya)
                   storeName={content.store.name}
                   storeAddress={content.store.address || '-'}
                   storePhone={content.store.phone}
                   receiptFooter={content.store.receiptFooter}
+                  subtotal={content.transaction.totalAmount}
+                  taxAmount={0}       
+                  discountAmount={0}
                   date={content.transaction.createdAt}
                   orderId={content.transaction.id}
                   cashierName={content.transaction.cashier?.name || 'Kasir'}
@@ -380,12 +340,14 @@ Terima kasih!
                     quantity: item.quantity,
                     price: item.priceAtTime,
                   }))}
+                  orderType={'dine_in'}
+                  amountPaid={content.transaction.amountPaid}
                   totalAmount={content.transaction.totalAmount}
                   paymentMethod={content.transaction.paymentMethod}
                   cashAmount={content.transaction.amountPaid}
                   changeAmount={content.transaction.change}
-                  payments={content.transaction.payments.map((p) => ({
-                    method: p.paymentMethod,
+                  payments={(content.transaction.payments || []).map((p) => ({
+                    paymentMethod: p.paymentMethod,
                     amount: p.amount,
                   }))}
                 />
@@ -394,14 +356,13 @@ Terima kasih!
           ) : null}
         </div>
 
-        {/* Footer Dialog */}
+        {/* Footer */}
         <div className="p-4 bg-zinc-900 border-t border-zinc-800 flex justify-end">
           <Button
             ref={btnPrintRef}
             disabled={loading}
-            // 4. PANGGIL FUNCTION DARI REACT-TO-PRINT
             onClick={() => handlePrint()}
-            className="rounded-full px-8 bg-white text-black hover:bg-zinc-200 font-semibold shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(255,255,255,0.2)] transition-all"
+            className="rounded-full px-8 bg-white text-black hover:bg-zinc-200 font-semibold shadow-[0_0_20px_rgba(255,255,255,0.1)] transition-all"
           >
             <Printer className="w-4 h-4 mr-2" />
             Cetak Struk

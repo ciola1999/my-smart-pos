@@ -1,3 +1,5 @@
+// Project\smart-pos-v2\src\components\smart-pos\product-table.tsx
+
 'use client';
 
 import { useState, useTransition } from 'react';
@@ -401,24 +403,37 @@ export default function ProductTable({ data }: { data: Product[] }) {
                       />
                     </td>
 
-                    {/* CREATED AT (Hydration Safe) */}
-                    <td className="p-4 text-center text-xs text-gray-500 font-mono">
-                      <div
-                        className="flex items-center justify-center gap-1.5"
-                        title={
-                          product.createdAt ? String(product.createdAt) : '-'
-                        }
-                      >
-                        <CalendarDays size={12} className="opacity-40" />
-                        <span suppressHydrationWarning>
-                          {product.createdAt
-                            ? format(new Date(product.createdAt), 'dd/MM/yy', {
-                                locale: idLocale,
-                              })
-                            : '-'}
-                        </span>
-                      </div>
-                    </td>
+                    {/* CREATED AT (Device Timezone & Language Auto-detect) */}
+<td className="p-4 text-center text-xs text-gray-500 font-mono">
+  <div
+    className="flex items-center justify-center gap-1.5"
+    // PENTING: suppressHydrationWarning wajib ada karena server (UTC) beda dengan client (WIB)
+    suppressHydrationWarning={true} 
+    title={
+      product.createdAt
+        ? new Date(product.createdAt).toLocaleString(undefined, {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : '-'
+    }
+  >
+    <CalendarDays size={12} className="opacity-40" />
+    <span suppressHydrationWarning={true}>
+      {product.createdAt
+        ? new Date(product.createdAt).toLocaleDateString(undefined, {
+            day: '2-digit',
+            month: 'short', // Jan, Feb, Mar (mengikuti bahasa device)
+            year: '2-digit',
+          })
+        : '-'}
+    </span>
+  </div>
+</td>
 
                     {/* STATUS SWITCH */}
                     <td className="p-4 text-center">

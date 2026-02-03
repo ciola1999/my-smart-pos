@@ -1,3 +1,5 @@
+// Project\smart-pos-v2\src\components\smart-pos\Product-Form.tsx
+
 'use client';
 
 import { useRef, useState, useEffect, useActionState } from 'react';
