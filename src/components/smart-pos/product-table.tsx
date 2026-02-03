@@ -459,22 +459,6 @@ export default function ProductTable({ data }: { data: Product[] }) {
         productsToDelete={selectedProducts}
         onSuccess={() => setSelectedIds([])}
       />
-
-      <style jsx>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          height: 8px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: #18191e;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #333;
-          border-radius: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #444;
-        }
-      `}</style>
     </div>
   );
 }
