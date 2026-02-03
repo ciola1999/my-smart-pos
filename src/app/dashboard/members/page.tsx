@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { getMembers } from '@/components/smart-pos/members/queries';
 import { MemberTable } from '@/components/smart-pos/members/components/member-table';
 import { MemberSearch } from '@/components/smart-pos/members/components/member-search';
