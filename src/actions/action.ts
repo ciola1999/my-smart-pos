@@ -1,5 +1,4 @@
 // src/app/actions.ts
-'use server';
 
 import { db } from '@/db';
 import { members, discounts, type Member, type Discount } from '@/db/schema';

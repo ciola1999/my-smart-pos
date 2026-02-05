@@ -1,9 +1,7 @@
-'use server';
 
 import { db } from '@/db';
 import { products } from '@/db/schema';
 import { eq } from 'drizzle-orm';
-import { revalidatePath } from 'next/cache';
 
 // Path utama aplikasi kamu (agar UI langsung refresh saat data berubah)
 const MAIN_PATH = '/projects/smart-pos';
@@ -22,8 +20,7 @@ export async function updateProductPrice(id: number, newPrice: number) {
       })
       .where(eq(products.id, id));
 
-    // Revalidate halaman utama (supaya Inventory & POS terupdate)
-    revalidatePath(MAIN_PATH);
+
 
     return { success: true };
   } catch (error) {
@@ -45,8 +42,6 @@ export async function updateProductCost(id: number, newCost: number) {
       })
       .where(eq(products.id, id));
 
-    revalidatePath(MAIN_PATH);
-
     return { success: true };
   } catch (error) {
     console.error('Update Cost Error:', error);
@@ -67,7 +62,7 @@ export async function updateProductStock(id: number, newStock: number) {
       })
       .where(eq(products.id, id));
 
-    revalidatePath(MAIN_PATH); 
+ 
     return { success: true };
   } catch (error) {
     console.error('Update Stock Error:', error);
@@ -88,7 +83,6 @@ export async function toggleProductStatus(id: number, currentStatus: boolean) {
       })
       .where(eq(products.id, id));
 
-    revalidatePath(MAIN_PATH);
     return { success: true, newStatus };
   } catch (error) {
     console.error('Error toggle status:', error);

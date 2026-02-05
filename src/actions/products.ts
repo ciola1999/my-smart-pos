@@ -1,7 +1,5 @@
 // Project\smart-pos-v2\src\actions\products.ts
 
-'use server';
-
 import { db } from '@/db';
 import {
   products,
@@ -11,7 +9,6 @@ import {
 } from '@/db/schema';
 import { productSchema } from '@/lib/schemas/product-schema';
 import { desc, asc, inArray, sql, eq, type InferSelectModel } from 'drizzle-orm';
-import { revalidatePath } from 'next/cache';
 import { createClient } from '@supabase/supabase-js';
 
 // --- SETUP SUPABASE ---
@@ -64,6 +61,9 @@ export async function getProducts(
   sortBy: string = 'createdAt',
   sortOrder: 'asc' | 'desc' = 'desc'
 ): Promise<ActionState<ProductWithCategory[]>> {
+  if (typeof window === "undefined") {
+    return { success: true, data: [] };
+  }
   try {
     const query = db
       .select({
@@ -220,7 +220,6 @@ export async function upsertProduct(
       await db.insert(products).values({ ...payload, createdAt: new Date() });
     }
 
-    revalidatePath('/dashboard/products');
     return { success: true, message: 'Produk berhasil disimpan!' };
     
   } catch (error: unknown) {
@@ -274,7 +273,6 @@ export async function deleteProductsAction(ids: number[]) {
 
     await db.delete(products).where(inArray(products.id, ids));
 
-    revalidatePath('/dashboard/products');
     return {
       success: true,
       message: `Berhasil menghapus ${ids.length} produk.`,
@@ -311,7 +309,6 @@ export async function seedDummyProducts() {
 
     await db.insert(products).values(newProduct);
 
-    revalidatePath('/dashboard/products');
     return { success: true, message: `Berhasil menambah: ${name}` };
   } catch (error: unknown) {
     console.error('Seed Error:', error);
@@ -326,7 +323,6 @@ export async function deleteAllProducts() {
     await db.delete(orders);
     await db.delete(products);
 
-    revalidatePath('/dashboard/products');
     return { success: true, message: 'Database bersih total!' };
   } catch (error: unknown) {
     console.error('Reset Error:', error);

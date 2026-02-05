@@ -1,28 +1,23 @@
-// Project\smart-pos-v2\src\db\index.ts
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
-import * as schema from "./schema";
+import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
+import * as schema from "@/db/schema"; // Pastikan path schema Anda benar
 
-const connectionString = process.env.DATABASE_URL!;
+// 1. Inisialisasi PGlite
+// "idb://smart-pos-db" artinya data disimpan di IndexedDB browser dengan nama 'smart-pos-db'.
+// Ini sangat cepat dan persistent untuk offline-first.
+const client = new PGlite("idb://smart-pos-db");
 
-// 1. Definisikan tipe untuk global variable agar TypeScript tidak komplain
-const globalForDb = globalThis as unknown as {
-  conn: postgres.Sql | undefined;
-};
-
-// 2. Konfigurasi koneksi
-// Gunakan koneksi yang sudah ada (jika ada), kalau tidak buat baru.
-const client = globalForDb.conn ?? postgres(connectionString, {
-  prepare: false, // Wajib false untuk Supabase Transaction Mode
-  max: process.env.NODE_ENV === 'production' ? 10 : 1, // Batasi koneksi!
-  idle_timeout: 20, // Tutup koneksi jika nganggur 20 detik
-  connect_timeout: 10,
-});
-
-// 3. Simpan koneksi ke global variable HANYA di mode development
-// Ini mencegah hot-reload Next.js membuat koneksi bocor (leak) berulang kali
-if (process.env.NODE_ENV !== 'production') {
-  globalForDb.conn = client;
-}
-
+// 2. Inisialisasi Drizzle
 export const db = drizzle(client, { schema });
+
+// 3. (Opsional) Helper untuk cek koneksi di console
+export const checkDbConnection = async () => {
+  try {
+    await client.waitReady;
+    console.log("✅ PGlite Database Connected (Offline/IndexedDB Mode)");
+    return true;
+  } catch (error) {
+    console.error("❌ Database Connection Failed:", error);
+    return false;
+  }
+};

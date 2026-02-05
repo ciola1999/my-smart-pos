@@ -1,18 +1,22 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  reactCompiler: true,
+  // 1. Wajib untuk Tauri
+  output: 'export', 
+  
   images: {
-        remotePatterns: [
-            {
-                protocol: 'https',
-                hostname: 'egzgoewvdgqukeschevz.supabase.co',
-                port: '',
-                pathname: '/storage/v1/object/public/**',
-            },
-        ],
-    },
+    unoptimized: true,
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'egzgoewvdgqukeschevz.supabase.co',
+        port: '',
+        pathname: '/storage/v1/object/public/**',
+      },
+    ],
+  },
+
+  reactCompiler: true,
 };
 
 export default nextConfig;

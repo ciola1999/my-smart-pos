@@ -1,4 +1,3 @@
-'use server';
 
 import { db } from '@/db'; // 👈 Pastikan path ini sesuai (biasanya @/db saja cukup jika ada index.ts)
 import {

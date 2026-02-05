@@ -3,93 +3,122 @@ import {
   orders,
   orderItems,
   products,
-  users,
 } from '@/db/schema';
 import { sql, desc, eq, gte, sum, count } from 'drizzle-orm';
-import { startOfDay, subDays } from 'date-fns';
 
-// Kita export tipe datanya biar bisa dipakai di komponen UI
+// Export tipe data
 export type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
 
 export async function getDashboardData() {
-  const today = startOfDay(new Date());
-  const sevenDaysAgo = subDays(today, 6); // Ambil 7 hari terakhir
+  // 🛡️ 1. SATPAM: Cek Server Side
+  // Kalau ini jalan di server (saat build), return data kosong biar gak error.
+  if (typeof window === 'undefined') {
+    return {
+      revenueToday: 0,
+      ordersToday: 0,
+      chartData: [],
+      recentOrders: [],
+      topProducts: [],
+    };
+  }
 
-  // 🔥 POWER MOVE: Gunakan Promise.all()
-  // Ini menjalankan semua query secara PARALEL (Bersamaan).
-  // Dashboardmu akan loading 3x - 5x lebih cepat dibanding await satu per satu.
-  const [todayStats, salesTrend, recentOrders, topProducts] = await Promise.all(
-    [
-      // 1. STATISTIK HARI INI (Logic aslimu, sedikit disederhanakan)
+  try {
+    // 📅 2. SETUP TANGGAL (Tanpa date-fns biar native & ringan)
+    const now = new Date();
+    // Set ke jam 00:00:00 hari ini
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    // Set ke 7 hari lalu
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(today.getDate() - 6);
+
+    // 🔥 3. EKSEKUSI PARALEL
+    const [todayStats, salesTrend, recentOrders, topProducts] = await Promise.all([
+      
+      // A. STATISTIK HARI INI
       db
         .select({
-          totalRevenue: sql<number>`coalesce(sum(${orders.totalAmount}), 0)`,
+          totalRevenue: sql<number>`coalesce(sum(${orders.totalAmount}), 0)`.mapWith(Number),
           totalOrders: count(orders.id),
         })
         .from(orders)
         .where(gte(orders.createdAt, today)),
 
-      // 2. CHART DATA (Logic SQL aslimu yang mantap itu 🚀)
+      // B. CHART DATA (Revisi: Hindari 'to_char' di SQL, format di JS saja)
+      // PGlite lebih aman pakai date_trunc atau casting ke date biasa
       db
         .select({
-          dateLabel: sql<string>`to_char(${orders.createdAt}, 'DD Mon')`,
-          rawDate: sql<string>`date_trunc('day', ${orders.createdAt})`,
-          revenue: sql<number>`coalesce(sum(${orders.totalAmount}), 0)`,
+          rawDate: sql<string>`date_trunc('day', ${orders.createdAt})`, 
+          revenue: sql<number>`coalesce(sum(${orders.totalAmount}), 0)`.mapWith(Number),
         })
         .from(orders)
         .where(gte(orders.createdAt, sevenDaysAgo))
-        .groupBy(
-          sql`date_trunc('day', ${orders.createdAt})`,
-          sql`to_char(${orders.createdAt}, 'DD Mon')`
-        )
+        .groupBy(sql`date_trunc('day', ${orders.createdAt})`)
         .orderBy(sql`date_trunc('day', ${orders.createdAt})`),
 
-      // 3. RECENT ORDERS (Fitur Baru: "The Pulse")
+      // C. RECENT ORDERS (The Pulse)
       db
         .select({
           id: orders.id,
           customerName: orders.customerName,
-          totalAmount: orders.totalAmount,
-          status: orders.paymentMethod, // cash/qris/split
+          totalAmount: sql<number>`${orders.totalAmount}`.mapWith(Number), // Casting number biar aman
+          status: orders.paymentMethod, 
           createdAt: orders.createdAt,
-          itemsCount: count(orderItems.id), // Hitung jumlah item per order
+          itemsCount: count(orderItems.id),
         })
         .from(orders)
         .leftJoin(orderItems, eq(orders.id, orderItems.orderId))
         .orderBy(desc(orders.createdAt))
-        .groupBy(orders.id) // Grouping karena ada join
+        .groupBy(orders.id)
         .limit(5),
 
-      // 4. TOP PRODUCTS (Fitur Baru: "Pareto Analysis")
+      // D. TOP PRODUCTS
       db
         .select({
           id: products.id,
           name: products.name,
-          sales: sum(orderItems.quantity).mapWith(Number),
-          revenue: sum(orderItems.priceAtTime).mapWith(Number),
+          sales: sql<number>`sum(${orderItems.quantity})`.mapWith(Number),
+          revenue: sql<number>`sum(${orderItems.priceAtTime})`.mapWith(Number),
         })
         .from(orderItems)
         .leftJoin(products, eq(orderItems.productId, products.id))
-        .leftJoin(orders, eq(orderItems.orderId, orders.id)) // Join ke orders buat filter tanggal
-        .where(gte(orders.createdAt, today)) // Hanya top product HARI INI
+        .leftJoin(orders, eq(orderItems.orderId, orders.id))
+        .where(gte(orders.createdAt, today))
         .groupBy(products.id, products.name)
         .orderBy(desc(sql`sum(${orderItems.quantity})`))
         .limit(5),
-    ]
-  );
+    ]);
 
-  // Return data bersih langsung (tanpa wrapper {success: true})
-  return {
-    revenueToday: Number(todayStats[0]?.totalRevenue || 0),
-    ordersToday: Number(todayStats[0]?.totalOrders || 0),
+    // 🧹 4. DATA MAPPING & FORMATTING (Dilakukan di JS)
+    
+    // Format Chart Data di sini (Lebih aman daripada SQL 'to_char')
+    const formattedChartData = salesTrend.map((item) => {
+      const d = new Date(item.rawDate);
+      // Format: "05 Feb"
+      const label = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
+      return {
+        date: label,
+        revenue: item.revenue,
+      };
+    });
 
-    // Mapping Chart Data sesuai format Recharts baru
-    chartData: salesTrend.map((item) => ({
-      date: item.dateLabel, // 'date' key untuk XAxis
-      revenue: Number(item.revenue), // 'revenue' key untuk Area
-    })),
+    return {
+      revenueToday: Number(todayStats[0]?.totalRevenue || 0),
+      ordersToday: Number(todayStats[0]?.totalOrders || 0),
+      chartData: formattedChartData,
+      recentOrders,
+      topProducts,
+    };
 
-    recentOrders,
-    topProducts,
-  };
+  } catch (error) {
+    console.error("❌ Gagal memuat dashboard:", error);
+    // Return dummy data jika error, supaya halaman tidak crash (White Screen)
+    return {
+      revenueToday: 0,
+      ordersToday: 0,
+      chartData: [],
+      recentOrders: [],
+      topProducts: [],
+    };
+  }
 }

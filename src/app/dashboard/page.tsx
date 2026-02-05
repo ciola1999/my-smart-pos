@@ -1,6 +1,6 @@
 // E:\Belajar Javascript\.vscode\Project-Freelance\nexlanding\frontend\src\app\projects\smart-pos\dashboard\page.tsx
 
-export const dynamic = 'force-dynamic';
+// export const dynamic = 'force-dynamic';
 import { Suspense } from 'react'; // ✅ Terpakai
 import { getDashboardData } from '@/services/dashboard.service';
 import AnimatedCounter from '@/components/smart-pos/AnimatedCounter';

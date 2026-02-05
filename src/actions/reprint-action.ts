@@ -1,4 +1,3 @@
-'use server';
 
 import { db } from '@/db'; // Sesuaikan path drizzle
 import { orders, storeSettings } from '@/db/schema'; // Path schema kamu

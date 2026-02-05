@@ -1,10 +1,8 @@
-'use server';
 
 import { db } from '@/db';
 import { storeSettings, taxes } from '@/db/schema'; // Tambahkan taxes
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { revalidatePath } from 'next/cache';
 
 // --- SCHEMA VALIDASI (ZOD) ---
 const settingsFormSchema = z.object({
@@ -32,6 +30,9 @@ export type SettingsState = {
 
 // --- GET SETTINGS (Update: Ambil Pajak Juga) ---
 export async function getStoreSettings() {
+  if (typeof window === "undefined") {
+    return { success: true, data: null }; // Return null atau default object
+  }
   try {
     // 1. Ambil Setting Toko
     const settingsPromise = db
@@ -154,7 +155,6 @@ export async function updateStoreSettingsAction(
     });
     // 🔥 TRANSACTION END
 
-    revalidatePath('/dashboard/settings'); // Pastikan path ini sesuai url browser kamu
 
     return {
       status: 'success',

@@ -1,5 +1,4 @@
 'use server';
-
 import { db } from '@/db';
 import {
   orders,
@@ -8,7 +7,6 @@ import {
   products,
   type Order,
 } from '@/db/schema';
-import { revalidatePath } from 'next/cache';
 import { eq, sql, gte, desc } from 'drizzle-orm';
 
 // --- TYPE DEFINITIONS ---
@@ -201,8 +199,6 @@ export async function processCheckout(
       return insertedOrder;
     });
 
-    revalidatePath('/projects/smart-pos');
-    revalidatePath('/projects/smart-pos/history'); // Refresh history juga
 
     return {
       success: true,

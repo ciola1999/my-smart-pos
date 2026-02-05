@@ -1,4 +1,3 @@
-'use server';
 
 import { db } from '@/db';
 import { orders } from '@/db/schema';
@@ -9,6 +8,9 @@ export async function getTransactionHistory(dateRange?: {
   from: Date;
   to: Date;
 }) {
+  if (typeof window === "undefined") {
+    return { success: true, data: [] };
+  }
   try {
     // 1. Logika Filter Tanggal
     let whereCondition = undefined;

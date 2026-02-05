@@ -1,30 +1,16 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr' // ✅ Import Type
-import { cookies } from 'next/headers'
+// src/lib/supabase/server.ts
+import { createBrowserClient } from '@supabase/ssr';
+
+// PERHATIAN: 
+// Di mode Tauri (Static Export), kita tidak bisa menggunakan 'next/headers' atau 'cookies()'.
+// Fungsi ini dimodifikasi agar build Next.js tidak error.
 
 export async function createClient() {
-  const cookieStore = await cookies()
-
-  return createServerClient(
+  // Kita kembalikan instance client yang bekerja di level Browser.
+  // Auth state akan disimpan di LocalStorage/IndexedDB browser, bukan di HttpOnly Cookie server.
+  
+  return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        // ✅ FIX: Kita definisikan tipe parameter secara eksplisit di sini
-        setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          } catch {
-            // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
-        },
-      },
-    }
-  )
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 }
